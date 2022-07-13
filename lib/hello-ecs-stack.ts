@@ -11,31 +11,33 @@ import * as fs from 'fs';
 export class HelloEcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-
+    // Read the shadow list
     const secretKeysFromFile = fs.readFileSync(`./env.secret_keys`, 'utf8')
-
-    let listOfSecrets: string[] = []
+    // Create a list of the keys
+    let listOfKeys: string[] = []
     secretKeysFromFile.split(/\r?\n/).forEach(line => {
-      listOfSecrets.push(line)
+      listOfKeys.push(line)
     });
+    // Get the key-value pairs from the secrets manager and add them to an ecsSecrets class
     let ecsSecrets: { [key: string]: ecs.Secret } = {}
-    listOfSecrets.forEach(secret => {
-      let ecsSecret: secretsmanager.ISecret = secretsmanager.Secret.fromSecretNameV2(
+    listOfKeys.forEach(secret => {
+      let ecsSecret: secretsmanager.ISecret = secretsmanager.Secret.fromSecretCompleteArn(
         this, 
-        `my-example-secret`,
-        'this-is-an-example-secret')
+        `my-example-secret-${secret}`,
+        `arn:aws:secretsmanager:${process.env.CDK_DEFAULT_REGION}:${process.env.CDK_DEFAULT_ACCOUNT}:secret:this-is-an-example-secret-cwUGjW`)
       ecsSecrets[secret] = ecs.Secret.fromSecretsManager(ecsSecret, secret);
     })
-
+    // The Fargate application based on the Dockerfile in the root of the repo
+    // ecsSecrets are referenced here to be used in the containers environment variables.
     new ecsp.ApplicationLoadBalancedFargateService(this, 'MyWebServer', {
+      enableExecuteCommand: true,
       taskImageOptions: {
         secrets: ecsSecrets,
-        // image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
         image: ecs.ContainerImage.fromDockerImageAsset(new ecr_assets.DockerImageAsset(this, 'MyContainerImageAsset', {
           directory: './'
         }),
       )},
       publicLoadBalancer: true
     });
-  }
+}
 }
